@@ -37,7 +37,7 @@ st.sidebar.header("Controls")
 
 asset_class = st.sidebar.selectbox(
     "Asset Class",
-    options=["Rates", "FX", "Equities", "Commodities", "Crypto"]
+    options=["FX", "Equities", "Commodities", "Crypto", "Rates"]
 )
 
 markets = (
