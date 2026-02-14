@@ -1,0 +1,52 @@
+import streamlit as st
+import pandas as pd
+
+st.set_page_config(layout="wide")
+st.title("Cross-Asset Screener")
+
+@st.cache_data
+def load_latest():
+    return pd.read_parquet("data/processed/cot_latest_snapshot.parquet")
+
+latest = load_latest()
+
+asset_class = st.sidebar.selectbox(
+    "Asset Class",
+    options=sorted(latest["asset_class"].unique())
+)
+
+expression = st.sidebar.selectbox(
+    "Expression",
+    options=[("Net contracts", "net"), ("% of OI", "pct_oi_net")],
+    format_func=lambda x: x[0]
+)[1]
+
+score_type = st.sidebar.selectbox("Score type", ["percentile", "z", "minmax"])
+lookback = st.sidebar.selectbox("Lookback", ["3y", "5y", "max"])
+horizon = st.sidebar.selectbox("Change horizon", [("1w","1w"),("4w","4w"),("13w","13w")], format_func=lambda x: x[0])[1]
+
+score_col = {"percentile": f"{expression}_pctile_{lookback}",
+             "z": f"{expression}_z_{lookback}",
+             "minmax": f"{expression}_minmax_{lookback}"}[score_type]
+chg_col = f"{expression}_chg_{horizon}"
+
+df = latest.query("asset_class == @asset_class").copy()
+
+# Flags
+df["flag"] = ""
+df.loc[df[score_col] >= 90, "flag"] = "Extreme long"
+df.loc[df[score_col] <= 10, "flag"] = "Extreme short"
+
+st.subheader("Positioning Map (Score vs Change)")
+st.scatter_chart(df.dropna(subset=[score_col, chg_col]), x=score_col, y=chg_col)
+
+st.subheader("Ranked Table")
+sort_mode = st.radio("Sort by", ["Most extreme", "Biggest change"], horizontal=True)
+if sort_mode == "Most extreme":
+    df = df.sort_values(score_col, ascending=False)
+else:
+    df = df.sort_values(chg_col, key=lambda s: s.abs(), ascending=False)
+
+cols = ["market_short", "date", "net", "pct_oi_net", score_col, chg_col, "flag"]
+cols = [c for c in cols if c in df.columns]
+st.dataframe(df[cols], use_container_width=True)
