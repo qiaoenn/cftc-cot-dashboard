@@ -17,3 +17,9 @@ __pycache__/
 # Data (optional if you don't want raw data on GitHub)
 data/raw/
 
+.venv/
+
+__pycache__/
+*.pyc
+.DS_Store
+.ipynb_checkpoints/
