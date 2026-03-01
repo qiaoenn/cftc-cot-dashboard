@@ -23,7 +23,6 @@ latest["date"] = pd.to_datetime(latest["date"], errors="coerce")
 # --- Altair: avoid max_rows issues ---
 alt.data_transformers.disable_max_rows()
 
-
 st.title("CFTC CoT Dashboard")
 st.caption(
     "Speculative positioning using Leveraged Funds (financials) "
@@ -130,7 +129,7 @@ if pd.notna(contract_name):
 # -------------------------
 st.subheader("Positioning Summary")
 
-row = row_latest  
+row = row_latest
 
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Score", f"{row[score_col]:.1f}" if pd.notna(row[score_col]) else "—")
@@ -164,23 +163,27 @@ if pd.notna(chg) and abs(chg) >= 0.02 and expression == "pct_oi_net":
 if flags:
     st.info(" | ".join(flags))
 
+# -------------------------
+# Driver breakdown table (PM-intuitive sign convention)
+# Δ Long (1w) = L_t - L_{t-1}
+# Δ Short (1w) = S_{t-1} - S_t  (short covering positive)
+# Implied Δ Net = Δ Long + Δ Short
+# -------------------------
+d_long_1w = row["long_chg_1w"]
+d_short_1w = -row["short_chg_1w"]  # convert to S_{t-1} - S_t (short covering positive)
+d_net_1w = d_long_1w + d_short_1w
 
 drivers_tbl = pd.DataFrame({
     "metric": ["Δ long (1w)", "Δ short (1w)", "Implied Δ net"],
-    "value": [
-        row["long_chg_1w"],
-        row["short_chg_1w"],
-        (row["long_chg_1w"] - row["short_chg_1w"]),
-    ]
+    "value": [d_long_1w, d_short_1w, d_net_1w]
 })
 
 st.caption(
     "Driver breakdown highlights whether the weekly shift was driven by fresh long build or short covering.\n\n"
-    "Implied Δ net = Δ long − Δ short"
+    "Implied Δ net = Δ long + Δ short"
 )
 
 st.dataframe(drivers_tbl, use_container_width=True)
-
 
 # -------------------------
 # Chart 1: Positioning & Score Over Time (dual-axis + TradingView-like pan/zoom)
@@ -261,11 +264,10 @@ else:
         alt.layer(*layers, rule)
         .resolve_scale(y="independent")
         .properties(height=320)
-        # key line: pan/zoom on x-axis (scroll to zoom, drag to pan)
         .interactive(bind_y=False)
     )
 
-      # Legend + short interpretation
+    # Legend + short interpretation
     st.caption(
         f"Legend — Solid: {level_title} | "
         f"Dotted: {score_type} score ({lookback} lookback)"
@@ -280,33 +282,33 @@ else:
         "Solid line shows how positioning is building/unwinding over time."
     )
 
-
     st.altair_chart(chart, use_container_width=True)
 
-
-
 # -------------------------
-# Chart 2: Weekly Change Decomposition
+# Chart 2: Weekly Change Decomposition (consistent with driver table)
 # -------------------------
 st.subheader("Weekly Change Decomposition")
 
 st.caption(
     "Breaks down weekly change in net positioning into long build and short covering, "
     "helping distinguish fresh directional conviction from mechanical short covering.\n\n"
-    "Net ≈ ΔLong − ΔShort"
+    "Δ Net (1w) = Δ Long (1w) + Δ Short (1w)"
 )
 
+# Using the same convention as the driver table:
+# Δ Long (1w) = L_t - L_{t-1}
+# Δ Short (1w) = S_{t-1} - S_t  (short covering positive)
+# Δ Net (1w) = Δ Long + Δ Short
 drivers = pd.DataFrame({
-    "Component": ["Longs", "Shorts"],
+    "Component": ["Δ Long (1w)", "Δ Net (1w)", "Δ Short (1w)"],
     "Change": [
-        row_latest["long_chg_1w"],
-        -row_latest["short_chg_1w"]
+        d_long_1w,
+        d_net_1w,
+        d_short_1w
     ]
 })
-drivers.loc[len(drivers)] = ["Net", drivers["Change"].sum()]
 
 st.bar_chart(drivers.set_index("Component"))
-
 
 # -------------------------
 # Chart 3: Cross-asset scatter
@@ -326,7 +328,6 @@ st.caption(
     "bottom-right = crowded and unwinding; "
     "bottom-left = depressed and still selling."
 )
-
 
 scatter_df = latest.query("asset_class == @asset_class")
 
@@ -397,7 +398,7 @@ tbl = tbl.rename(columns={
 tbl = tbl.reset_index(drop=True)
 tbl.insert(0, "Rank", tbl.index + 1)
 
-#caption
+# caption
 st.caption(
     "This table complements the Cross-Asset Positioning Map by providing precise values "
     "behind each plotted point for deeper comparison and ranking."
